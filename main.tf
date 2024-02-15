@@ -19,7 +19,7 @@ resource "google_compute_subnetwork" "webapp" {
 }
 
 resource "google_compute_route" "webapp_route" {
-  count            = var.vpc_count
+  count         = var.vpc_count
   name             = "webapp-route-${count.index}"
   network          = google_compute_network.my_vpc[count.index].self_link
   dest_range       = "0.0.0.0/0"
