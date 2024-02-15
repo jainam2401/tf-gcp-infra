@@ -1,0 +1,17 @@
+name: "Validate Terraform"
+on:
+  pull_request:
+    types:
+      - opened
+jobs:
+  IAC:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Code
+        uses: actions/checkout@v3
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+      - name: Validate Terraform
+        run: |
+          terraform init
+          terraform validate
