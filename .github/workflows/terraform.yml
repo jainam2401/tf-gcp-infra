@@ -9,5 +9,5 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
       - name: Validate Terraform
-        run: terraform Validate
+        run: terraform validate
     
