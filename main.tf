@@ -10,7 +10,7 @@ resource "google_compute_network" "my_vpc" {
   routing_mode            = "REGIONAL"
 }
 
-resource "google_compute_subnetwork" "webapp" {
+"google_compute_subnetwork" "webapp" {
   count         = var.vpc_count
   name          = "webapp-${count.index}"
   region        = var.region
