@@ -1,13 +1,13 @@
 provider "google" {
-  project = "braided-potion-413918"
-  region  = "us-east1"
+  project     = "dev-csye-6225"
+  region      = "us-east1"
 }
 
 resource "google_compute_network" "my_vpc" {
   count                   = var.vpc_count
   name                    = "${var.vpc_name}-${count.index}"
-  auto_create_subnetworks = false
-  routing_mode            = "REGIONAL"
+  auto_create_subnetworks = var.auto_create_subnetworks
+  routing_mode            = var.routing_mode
 }
 
 resource "google_compute_subnetwork" "webapp" {
@@ -15,11 +15,11 @@ resource "google_compute_subnetwork" "webapp" {
   name          = "webapp-${count.index}"
   region        = var.region
   network       = google_compute_network.my_vpc[count.index].self_link
-  ip_cidr_range = "10.0.1.0/${var.cidr_range}"
+  ip_cidr_range = "${var.webapp_cidr_block}/${var.cidr_range}"
 }
 
 resource "google_compute_route" "webapp_route" {
-  count         = var.vpc_count
+  count            = var.vpc_count
   name             = "webapp-route-${count.index}"
   network          = google_compute_network.my_vpc[count.index].self_link
   dest_range       = "0.0.0.0/0"
@@ -33,5 +33,47 @@ resource "google_compute_subnetwork" "db_subnet" {
   name          = "db-${count.index}"
   region        = var.region
   network       = google_compute_network.my_vpc[count.index].self_link
-  ip_cidr_range = "10.0.2.0/${var.cidr_range}"
+  ip_cidr_range = "${var.db_cidr_block}/${var.cidr_range}"
+}
+
+resource "google_compute_firewall" "allow_application_traffic" {
+  depends_on = [google_compute_network.my_vpc]
+  priority   = 1000
+  count      = var.vpc_count
+  name       = "allow-httpterra-firewall-${count.index}"
+  network    = google_compute_network.my_vpc[count.index].name
+  allow {
+    protocol = "tcp"
+    ports    = [var.NODE_PORT]
+  }
+  source_ranges = [var.source_range]
+  target_tags   = ["open-http-${count.index}"]
+}
+
+resource "google_compute_instance" "instances" {
+  depends_on = [google_compute_network.my_vpc, google_compute_subnetwork.webapp, google_compute_firewall.allow_application_traffic]
+  count      = var.vpc_count
+  boot_disk {
+    auto_delete = true
+    device_name = "instance-vpc-${count.index}"
+
+    initialize_params {
+      image = "projects/dev-csye-6225/global/images/${var.image_name}"
+      size  = var.boot_disk_size
+      type  = var.boot_disk_type
+    }
+    mode = "READ_WRITE"
+  }
+  machine_type = "e2-medium"
+  name         = "instance-vpc-${count.index}"
+  network_interface {
+    access_config {
+      network_tier = "PREMIUM"
+    }
+    queue_count = 0
+    stack_type  = "IPV4_ONLY"
+    subnetwork  = "projects/dev-csye-6225/regions/us-east1/subnetworks/webapp-${count.index}"
+  }
+  tags = ["http-server", "open-http-${count.index}"]
+  zone = var.zone
 }
