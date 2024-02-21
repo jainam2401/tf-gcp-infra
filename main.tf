@@ -7,8 +7,8 @@ provider "google" {
 resource "google_compute_network" "my_vpc" {
   count                   = var.vpc_count
   name                    = "${var.vpc_name}-${count.index}"
-  auto_create_subnetworks = false
-  routing_mode            = "REGIONAL"
+  auto_create_subnetworks = var.auto_create_subnetworks
+  routing_mode            = var.routing_mode
 }
 
 resource "google_compute_subnetwork" "webapp" {
@@ -16,7 +16,7 @@ resource "google_compute_subnetwork" "webapp" {
   name          = "webapp-${count.index}"
   region        = var.region
   network       = google_compute_network.my_vpc[count.index].self_link
-  ip_cidr_range = "10.0.1.0/${var.cidr_range}"
+  ip_cidr_range = "${var.webapp_cidr_block}/${var.cidr_range}"
 }
 
 resource "google_compute_route" "webapp_route" {
@@ -34,20 +34,20 @@ resource "google_compute_subnetwork" "db_subnet" {
   name          = "db-${count.index}"
   region        = var.region
   network       = google_compute_network.my_vpc[count.index].self_link
-  ip_cidr_range = "10.0.2.0/${var.cidr_range}"
+  ip_cidr_range = "${var.db_cidr_block}/${var.cidr_range}"
 }
 
 resource "google_compute_firewall" "allow_application_traffic" {
   depends_on = [google_compute_network.my_vpc]
   priority   = 1000
   count      = var.vpc_count
-  name       = "allow-http-firewall-${count.index}"
+  name       = "allow-httpterra-firewall-${count.index}"
   network    = google_compute_network.my_vpc[count.index].name
   allow {
     protocol = "tcp"
-    ports    = ["8080"]
+    ports    = [var.NODE_PORT]
   }
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = [var.source_range]
   target_tags   = ["open-http-${count.index}"]
 }
 
@@ -59,9 +59,9 @@ resource "google_compute_instance" "instances" {
     device_name = "instance-vpc-${count.index}"
 
     initialize_params {
-      image = "projects/dev-csye-6225/global/images/centos-image"
-      size  = 100
-      type  = "pd-balanced"
+      image = "projects/dev-csye-6225/global/images/${var.image_name}"
+      size  = var.boot_disk_size
+      type  = var.boot_disk_type
     }
     mode = "READ_WRITE"
   }
@@ -76,5 +76,5 @@ resource "google_compute_instance" "instances" {
     subnetwork  = "projects/dev-csye-6225/regions/us-east1/subnetworks/webapp-${count.index}"
   }
   tags = ["http-server", "open-http-${count.index}"]
-  zone = "us-east1-b"
+  zone = var.zone
 }
