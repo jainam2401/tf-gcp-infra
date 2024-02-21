@@ -1,5 +1,4 @@
 provider "google" {
-  credentials = file("/Users/jainammehta/Desktop/Cloud/dev-csye-6225-08af72cd9221.json")
   project     = "dev-csye-6225"
   region      = "us-east1"
 }
