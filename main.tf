@@ -1,4 +1,5 @@
 provider "google" {
+  credentials = file("/Users/jainammehta/Desktop/Cloud/dev-csye-6225-08af72cd9221.json")
   project     = "dev-csye-6225"
   region      = "us-east1"
 }
@@ -50,6 +51,20 @@ resource "google_compute_firewall" "allow_application_traffic" {
   target_tags   = ["open-http-${count.index}"]
 }
 
+resource "google_compute_firewall" "deny_ssh_from_internet" {
+  depends_on = [google_compute_network.my_vpc]
+  priority   = 1000
+  count      = var.vpc_count
+  name       = "deny-ssh-${count.index}"
+  network    = google_compute_network.my_vpc[count.index].name
+  deny {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+  source_ranges = ["0.0.0.0/0"] # Deny SSH from all IP addresses
+  target_tags   = ["deny-ssh-${count.index}"]
+}
+
 resource "google_compute_instance" "instances" {
   depends_on = [google_compute_network.my_vpc, google_compute_subnetwork.webapp, google_compute_firewall.allow_application_traffic]
   count      = var.vpc_count
@@ -74,6 +89,6 @@ resource "google_compute_instance" "instances" {
     stack_type  = "IPV4_ONLY"
     subnetwork  = "projects/dev-csye-6225/regions/us-east1/subnetworks/webapp-${count.index}"
   }
-  tags = ["http-server", "open-http-${count.index}"]
+  tags = ["http-server", "open-http-${count.index}", "deny-ssh-${count.index}"]
   zone = var.zone
 }
