@@ -38,7 +38,7 @@ resource "google_compute_subnetwork" "db_subnet" {
 
 resource "google_compute_firewall" "allow_application_traffic" {
   depends_on = [google_compute_network.my_vpc]
-  priority   = 1000
+  priority   = var.FIREWALL_PRIORITY
   count      = var.vpc_count
   name       = "allow-httpterra-firewall-${count.index}"
   network    = google_compute_network.my_vpc[count.index].name
@@ -52,7 +52,7 @@ resource "google_compute_firewall" "allow_application_traffic" {
 
 resource "google_compute_firewall" "deny_ssh_from_internet" {
   depends_on = [google_compute_network.my_vpc]
-  priority   = 1000
+  priority   = var.FIREWALL_PRIORITY
   count      = var.vpc_count
   name       = "deny-ssh-${count.index}"
   network    = google_compute_network.my_vpc[count.index].name
@@ -60,7 +60,7 @@ resource "google_compute_firewall" "deny_ssh_from_internet" {
     protocol = "tcp"
     ports    = ["22"]
   }
-  source_ranges = ["0.0.0.0/0"] # Deny SSH from all IP addresses
+  source_ranges = [var.source_range]
   target_tags   = ["deny-ssh-${count.index}"]
 }
 

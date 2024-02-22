@@ -72,3 +72,8 @@ variable "zone" {
   type    = string
   default = "us-east1-b"
 }
+
+variable "FIREWALL_PRIORITY"{
+  type = number
+  default = 1000
+}
