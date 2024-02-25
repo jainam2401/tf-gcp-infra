@@ -122,7 +122,7 @@ resource "google_compute_firewall" "deny_ssh_from_internet" {
   count      = var.vpc_count
   name       = "deny-ssh-${count.index}"
   network    = google_compute_network.my_vpc[count.index].name
-  deny {
+  allow {
     protocol = "tcp"
     ports    = ["22"]
   }
