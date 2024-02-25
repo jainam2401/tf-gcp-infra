@@ -1,79 +1,91 @@
+variable "project_id" {
+  type = string
+}
+
 variable "vpc_name" {
-  type    = string
-  default = "my-vpc"
+  type = string
 }
 
 variable "vpc_count" {
-  type    = number
-  default = 1
+  type = number
 }
 
 variable "cidr_range" {
-  type    = number
-  default = 24
+  type = number
 }
 
 variable "region" {
-  type    = string
-  default = "us-east1"
+  type = string
 }
 
 variable "auto_create_subnetworks" {
-  type    = bool
-  default = false
+  type = bool
 }
 
 variable "routing_mode" {
-  type    = string
-  default = "REGIONAL"
+  type = string
 }
 
 variable "webapp_cidr_block" {
-  type    = string
-  default = "10.0.1.0"
+  type = string
 }
 
 variable "db_cidr_block" {
-  type    = string
-  default = "10.0.2.0"
+  type = string
 }
 
 variable "NODE_PORT" {
-  type    = string
-  default = "8080"
+  type = string
 }
 
 variable "source_range" {
-  type    = string
-  default = "0.0.0.0/0"
+  type = string
 }
 
 variable "image_name" {
-  type    = string
-  default = "centos-image"
+  type = string
 }
 
 variable "boot_disk_size" {
-  type    = number
-  default = 100
+  type = number
 }
 
 variable "boot_disk_type" {
-  type    = string
-  default = "pd-balanced"
+  type = string
 }
 
 variable "machine_type" {
-  type    = string
-  default = "e2-medium"
+  type = string
 }
 
 variable "zone" {
-  type    = string
-  default = "us-east1-b"
+  type = string
 }
 
-variable "FIREWALL_PRIORITY"{
+variable "FIREWALL_PRIORITY" {
   type = number
-  default = 1000
+}
+
+variable "database_username" {
+  type = string
+}
+
+variable "database_name" {
+  type = string
+}
+
+variable "disk_type" {
+  type = string
+}
+
+variable "disk_size" {
+  type = number
+}
+
+variable "availability_type" {
+  type = string
+}
+
+variable "password_length" {
+  type = number
 }
