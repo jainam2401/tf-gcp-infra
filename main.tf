@@ -1,6 +1,7 @@
 provider "google" {
-  project     = "dev-csye-6225"
-  region      = "us-east1"
+  # credentials = file("/Users/jainammehta/Desktop/Cloud/dev-csye-6225-08af72cd9221.json")
+  project = var.project_id
+  region  = var.region
 }
 
 resource "google_compute_network" "my_vpc" {
@@ -36,6 +37,71 @@ resource "google_compute_subnetwork" "db_subnet" {
   ip_cidr_range = "${var.db_cidr_block}/${var.cidr_range}"
 }
 
+resource "google_project_service" "service_networking" {
+  service = "servicenetworking.googleapis.com"
+}
+
+# Allocate IP range for the Private Services Access
+resource "google_compute_global_address" "private_services_access" {
+  count         = var.vpc_count
+  name          = "private-services-access-${count.index}"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.my_vpc[count.index].self_link
+}
+
+resource "google_service_networking_connection" "private_vpc_connection" {
+  count                   = var.vpc_count
+  network                 = google_compute_network.my_vpc[count.index].self_link
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_services_access[count.index].name]
+}
+
+resource "google_sql_database_instance" "cloud_instance" {
+  depends_on       = [google_service_networking_connection.private_vpc_connection]
+  count            = var.vpc_count
+  name             = "sql-instance-${count.index}"
+  database_version = "MYSQL_8_0"
+  region           = var.region
+  settings {
+    tier = "db-custom-1-3840"
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = google_compute_network.my_vpc[count.index].self_link
+    }
+    disk_type         = var.disk_type
+    disk_size         = var.disk_size
+    disk_autoresize   = false
+    availability_type = var.availability_type
+    backup_configuration {
+      binary_log_enabled = true
+      enabled            = true
+    }
+  }
+  deletion_protection = false
+}
+
+resource "google_sql_database" "database" {
+  count    = var.vpc_count
+  name     = var.database_name
+  instance = google_sql_database_instance.cloud_instance[count.index].name
+}
+
+resource "random_password" "password" {
+  length           = var.password_length
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+resource "google_sql_user" "users" {
+  name     = var.database_username
+  count    = var.vpc_count
+  instance = google_sql_database_instance.cloud_instance[count.index].name
+  password = random_password.password.result
+  host     = "%"
+}
+
 resource "google_compute_firewall" "allow_application_traffic" {
   depends_on = [google_compute_network.my_vpc]
   priority   = var.FIREWALL_PRIORITY
@@ -56,7 +122,7 @@ resource "google_compute_firewall" "deny_ssh_from_internet" {
   count      = var.vpc_count
   name       = "deny-ssh-${count.index}"
   network    = google_compute_network.my_vpc[count.index].name
-  deny {
+  allow {
     protocol = "tcp"
     ports    = ["22"]
   }
@@ -65,7 +131,7 @@ resource "google_compute_firewall" "deny_ssh_from_internet" {
 }
 
 resource "google_compute_instance" "instances" {
-  depends_on = [google_compute_network.my_vpc, google_compute_subnetwork.webapp, google_compute_firewall.allow_application_traffic]
+  depends_on = [google_compute_network.my_vpc, google_compute_subnetwork.webapp, google_compute_firewall.allow_application_traffic, google_sql_database_instance.cloud_instance]
   count      = var.vpc_count
   boot_disk {
     auto_delete = true
@@ -90,4 +156,15 @@ resource "google_compute_instance" "instances" {
   }
   tags = ["http-server", "open-http-${count.index}", "deny-ssh-${count.index}"]
   zone = var.zone
+  metadata = {
+    "startup-script" = <<EOF
+    #!/bin/bash
+      echo "user=${google_sql_user.users[count.index].name}" > /tmp/.env
+      echo "password=${google_sql_user.users[count.index].password}" >> /tmp/.env
+      echo "host=${google_sql_database_instance.cloud_instance[count.index].private_ip_address}" >> /tmp/.env
+      chown csye6225:csye6225 /tmp/.env
+      mv /tmp/.env /home/csye6225/webapp/
+      sudo systemctl start node.service
+    EOF
+  }
 }
