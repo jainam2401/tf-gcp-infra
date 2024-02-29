@@ -89,3 +89,7 @@ variable "availability_type" {
 variable "password_length" {
   type = number
 }
+
+variable "database_version" {
+  type = string
+}
