@@ -56,13 +56,14 @@ resource "google_service_networking_connection" "private_vpc_connection" {
   network                 = google_compute_network.my_vpc[count.index].self_link
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_services_access[count.index].name]
+  deletion_policy         = "ABANDON"
 }
 
 resource "google_sql_database_instance" "cloud_instance" {
   depends_on       = [google_service_networking_connection.private_vpc_connection]
   count            = var.vpc_count
   name             = "sql-instance-${count.index}"
-  database_version = "MYSQL_8_0"
+  database_version = var.database_version
   region           = var.region
   settings {
     tier = "db-custom-1-3840"
@@ -158,10 +159,11 @@ resource "google_compute_instance" "instances" {
   zone = var.zone
   metadata = {
     "startup-script" = <<EOF
-    #!/bin/bash
+      #!/bin/bash
       echo "user=${google_sql_user.users[count.index].name}" > /tmp/.env
       echo "password=${google_sql_user.users[count.index].password}" >> /tmp/.env
       echo "host=${google_sql_database_instance.cloud_instance[count.index].private_ip_address}" >> /tmp/.env
+      echo "database=${google_sql_database.database[count.index].name}" >> /tmp/.env
       chown csye6225:csye6225 /tmp/.env
       mv /tmp/.env /home/csye6225/webapp/
       sudo systemctl start node.service
