@@ -93,3 +93,7 @@ variable "password_length" {
 variable "database_version" {
   type = string
 }
+
+variable "dns_zone" {
+  type = string
+}
