@@ -123,7 +123,7 @@ resource "google_compute_firewall" "deny_ssh_from_internet" {
   count      = var.vpc_count
   name       = "deny-ssh-${count.index}"
   network    = google_compute_network.my_vpc[count.index].name
-  deny {
+  allow {
     protocol = "tcp"
     ports    = ["22"]
   }
@@ -131,9 +131,39 @@ resource "google_compute_firewall" "deny_ssh_from_internet" {
   target_tags   = ["deny-ssh-${count.index}"]
 }
 
+resource "google_compute_address" "instance_static_ip" {
+  count  = var.vpc_count
+  name   = "instance-static-ip-${count.index}"
+  region = var.region
+}
+
+resource "google_service_account" "my_service_account" {
+  account_id   = "my-service-account"
+  display_name = "My Service Account"
+  project      = var.project_id
+}
+
+resource "google_project_iam_member" "logging_admin" {
+  project = var.project_id
+  role    = "roles/logging.admin"
+  member  = "serviceAccount:${google_service_account.my_service_account.email}"
+}
+
+resource "google_project_iam_member" "monitoring_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.my_service_account.email}"
+}
+
 resource "google_compute_instance" "instances" {
-  depends_on = [google_compute_network.my_vpc, google_compute_subnetwork.webapp, google_compute_firewall.allow_application_traffic, google_sql_database_instance.cloud_instance]
-  count      = var.vpc_count
+  depends_on = [
+    google_compute_address.instance_static_ip,
+    google_compute_network.my_vpc,
+    google_compute_subnetwork.webapp,
+    google_compute_firewall.allow_application_traffic,
+    google_sql_database_instance.cloud_instance
+  ]
+  count = var.vpc_count
   boot_disk {
     auto_delete = true
     device_name = "instance-vpc-${count.index}"
@@ -149,6 +179,7 @@ resource "google_compute_instance" "instances" {
   name         = "instance-vpc-${count.index}"
   network_interface {
     access_config {
+      nat_ip       = google_compute_address.instance_static_ip[count.index].address
       network_tier = "PREMIUM"
     }
     queue_count = 0
@@ -164,9 +195,22 @@ resource "google_compute_instance" "instances" {
       echo "password=${google_sql_user.users[count.index].password}" >> /tmp/.env
       echo "host=${google_sql_database_instance.cloud_instance[count.index].private_ip_address}" >> /tmp/.env
       echo "database=${google_sql_database.database[count.index].name}" >> /tmp/.env
+      echo "projectId=${var.project_id}" >> /tmp/.env
       chown csye6225:csye6225 /tmp/.env
       mv /tmp/.env /home/csye6225/webapp/
       sudo systemctl start node.service
     EOF
   }
+  service_account {
+    email  = google_service_account.my_service_account.email
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+}
+resource "google_dns_record_set" "a_record" {
+  count        = var.vpc_count
+  name         = var.dns_zone
+  type         = "A"
+  ttl          = 300
+  managed_zone = google_dns_managed_zone.dns_zone.name
+  rrdatas      = [google_compute_address.instance_static_ip[count.index].address]
 }
