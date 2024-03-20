@@ -201,16 +201,16 @@ resource "google_compute_instance" "instances" {
       sudo systemctl start node.service
     EOF
   }
-  service_account {
+   service_account {
     email  = google_service_account.my_service_account.email
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
 }
 resource "google_dns_record_set" "a_record" {
   count        = var.vpc_count
-  name         = var.dns_zone
+  name         = "jainammehta.website."
   type         = "A"
   ttl          = 300
-  managed_zone = google_dns_managed_zone.dns_zone.name
+  managed_zone = var.dns_zone
   rrdatas      = [google_compute_address.instance_static_ip[count.index].address]
 }
