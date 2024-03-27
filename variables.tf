@@ -97,3 +97,59 @@ variable "database_version" {
 variable "dns_zone" {
   type = string
 }
+
+variable "a_record_name" {
+  type = string
+}
+
+variable "pub_sub_name" {
+  type = string
+}
+variable "subscription_name" {
+  type = string
+}
+
+variable "bucket_name" {
+  type = string
+}
+variable "bucket_location" {
+  type = string
+}
+variable "mailgun_api_key" {
+  type = string
+}
+variable "mailgun_domain" {
+  type = string
+}
+
+variable "function_name" {
+  type = string
+}
+
+variable "custom_subnet_cidr_range" {
+  type = string
+}
+
+variable "vpc_access_connector_cidr_range" {
+  type = string
+}
+
+variable "vpc_access_connector_name" {
+  type = string
+}
+
+variable "nodejs_version" {
+  type = string
+}
+
+variable "available_memory" {
+  type = string
+}
+
+variable "bucket_object_name" {
+  type = string
+}
+
+variable "bucket_object_source" {
+  type = string
+}
