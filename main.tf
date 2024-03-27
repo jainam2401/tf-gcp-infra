@@ -107,7 +107,7 @@ resource "google_compute_firewall" "allow_application_traffic" {
   depends_on = [google_compute_network.my_vpc]
   priority   = var.FIREWALL_PRIORITY
   count      = var.vpc_count
-  name       = "allow-httpterra-firewall-${count.index}"
+  name       = "allow-http-firewall-${count.index}"
   network    = google_compute_network.my_vpc[count.index].name
   allow {
     protocol = "tcp"
@@ -123,7 +123,7 @@ resource "google_compute_firewall" "deny_ssh_from_internet" {
   count      = var.vpc_count
   name       = "deny-ssh-${count.index}"
   network    = google_compute_network.my_vpc[count.index].name
-  deny {
+  allow {
     protocol = "tcp"
     ports    = ["22"]
   }
@@ -153,6 +153,21 @@ resource "google_project_iam_member" "monitoring_metric_writer" {
   project = var.project_id
   role    = "roles/monitoring.metricWriter"
   member  = "serviceAccount:${google_service_account.my_service_account.email}"
+}
+
+resource "google_project_iam_member" "pub_sub_role" {
+  project = var.project_id
+  role    = "roles/pubsub.publisher"
+  member  = "serviceAccount:${google_service_account.my_service_account.email}"
+}
+
+resource "google_pubsub_topic" "pubusub_topic" {
+  name = var.pub_sub_name
+}
+
+resource "google_pubsub_subscription" "pubsub_subscription" {
+  name  = var.subscription_name
+  topic = google_pubsub_topic.pubusub_topic.name
 }
 
 resource "google_compute_instance" "instances" {
@@ -196,21 +211,96 @@ resource "google_compute_instance" "instances" {
       echo "host=${google_sql_database_instance.cloud_instance[count.index].private_ip_address}" >> /tmp/.env
       echo "database=${google_sql_database.database[count.index].name}" >> /tmp/.env
       echo "projectId=${var.project_id}" >> /tmp/.env
+      echo "pubSub=${google_pubsub_topic.pubusub_topic.name}" >> /tmp/.env
       chown csye6225:csye6225 /tmp/.env
       mv /tmp/.env /home/csye6225/webapp/
       sudo systemctl start node.service
     EOF
   }
-   service_account {
+  service_account {
     email  = google_service_account.my_service_account.email
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
 }
 resource "google_dns_record_set" "a_record" {
   count        = var.vpc_count
-  name         = "jainammehta.website."
+  name         = var.a_record_name
   type         = "A"
   ttl          = 300
   managed_zone = var.dns_zone
   rrdatas      = [google_compute_address.instance_static_ip[count.index].address]
+}
+
+resource "google_storage_bucket" "bucket" {
+  name                        = var.bucket_name
+  location                    = var.bucket_location
+  uniform_bucket_level_access = true
+}
+
+resource "google_storage_bucket_iam_binding" "public" {
+  bucket = google_storage_bucket.bucket.name
+  role   = "roles/storage.objectViewer"
+
+  members = [
+    "allUsers",
+  ]
+}
+
+resource "google_storage_bucket_object" "object" {
+  name   = var.bucket_object_name
+  bucket = google_storage_bucket.bucket.name
+  source = var.bucket_object_source
+}
+resource "google_compute_subnetwork" "custom_subnet" {
+  name          = "${var.vpc_name}-custom-subnet"
+  ip_cidr_range = var.custom_subnet_cidr_range
+  region        = var.region
+  network       = google_compute_network.my_vpc[0].self_link
+}
+
+resource "google_vpc_access_connector" "my_connector" {
+  name          = var.vpc_access_connector_name
+  region        = var.region
+  network       = google_compute_network.my_vpc[0].name
+  ip_cidr_range = var.vpc_access_connector_cidr_range
+}
+
+
+resource "google_cloudfunctions2_function" "function" {
+  name        = var.function_name
+  location    = var.region
+  description = "A Cloud Function to send emails"
+
+  build_config {
+    entry_point = var.pub_sub_name
+    runtime     = var.nodejs_version
+
+    source {
+      storage_source {
+        bucket = google_storage_bucket.bucket.name
+        object = google_storage_bucket_object.object.name
+
+      }
+    }
+  }
+
+  service_config {
+    available_memory = var.available_memory
+    environment_variables = {
+      MAILGUN_API_KEY = var.mailgun_api_key
+      MAILGUN_DOMAIN  = var.mailgun_domain
+      user            = google_sql_user.users[0].name
+      password        = google_sql_user.users[0].password
+      database        = google_sql_database.database[0].name
+      host            = google_sql_database_instance.cloud_instance[0].private_ip_address
+      PUB_SUB_NAME    = var.pub_sub_name
+    }
+    vpc_connector = google_vpc_access_connector.my_connector.name
+  }
+
+  event_trigger {
+    trigger_region = var.region
+    event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic   = google_pubsub_topic.pubusub_topic.id
+  }
 }
