@@ -153,3 +153,22 @@ variable "bucket_object_name" {
 variable "bucket_object_source" {
   type = string
 }
+
+variable "max_replicas" {
+  type = number
+}
+variable "min_replicas" {
+  type = number
+}
+variable "cooldown_period" {
+  type = number
+}
+variable "autoscale_policy" {
+  type = number
+}
+variable "ssl_certificate_name" {
+  type = string
+}
+variable "domain_name" {
+  type = string
+}
