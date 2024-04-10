@@ -172,3 +172,21 @@ variable "ssl_certificate_name" {
 variable "domain_name" {
   type = string
 }
+
+variable "key_ring_name" {
+  type = string
+}
+variable "instance_ring_name" {
+  type = string
+}
+
+variable "sql_ring_name" {
+  type = string
+}
+
+variable "service_agent_instance_email" {
+  type = string
+}
+variable "bucket_key_ring_name" {
+  type = string
+}

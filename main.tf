@@ -58,8 +58,41 @@ resource "google_service_networking_connection" "private_vpc_connection" {
   deletion_policy         = "ABANDON"
 }
 
+resource "google_kms_key_ring" "my_key_ring" {
+  name     = var.key_ring_name
+  location = var.region
+  project  = var.project_id
+}
+
+resource "google_kms_crypto_key" "sql_crypto_key" {
+  name            = var.sql_ring_name
+  key_ring        = google_kms_key_ring.my_key_ring.id
+  rotation_period = "2592000s" # 30 days in seconds
+
+
+  version_template {
+    algorithm = "GOOGLE_SYMMETRIC_ENCRYPTION"
+  }
+}
+
+resource "google_project_service_identity" "gcp_sa_cloud_sql" {
+  project  = var.project_id
+  provider = google-beta
+  service  = "sqladmin.googleapis.com"
+}
+
+resource "google_kms_crypto_key_iam_binding" "crypto_key" {
+  provider      = google-beta
+  crypto_key_id = google_kms_crypto_key.sql_crypto_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = [
+    "serviceAccount:${google_project_service_identity.gcp_sa_cloud_sql.email}",
+  ]
+}
+
 resource "google_sql_database_instance" "cloud_instance" {
-  depends_on       = [google_service_networking_connection.private_vpc_connection]
+  depends_on       = [google_service_networking_connection.private_vpc_connection, google_kms_crypto_key.sql_crypto_key]
   count            = var.vpc_count
   name             = "sql-instance-${count.index}"
   database_version = var.database_version
@@ -79,8 +112,11 @@ resource "google_sql_database_instance" "cloud_instance" {
       enabled            = true
     }
   }
+  encryption_key_name = google_kms_crypto_key.sql_crypto_key.id
   deletion_protection = false
 }
+
+
 
 resource "google_sql_database" "database" {
   count    = var.vpc_count
@@ -183,7 +219,23 @@ resource "google_compute_firewall" "allow-lb-ip" {
   target_tags   = ["allow-lb-ip"]
 }
 
+resource "google_kms_crypto_key" "instance_crypto_key" {
+  name            = var.instance_ring_name
+  key_ring        = google_kms_key_ring.my_key_ring.id
+  rotation_period = "2592000s"
+  purpose         = "Encrypt_Decrypt"
+}
+
+
+resource "google_kms_crypto_key_iam_binding" "instance_binding" {
+  depends_on    = [google_kms_crypto_key.instance_crypto_key]
+  crypto_key_id = google_kms_crypto_key.instance_crypto_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  members       = [var.service_agent_instance_email]
+}
+
 resource "google_compute_region_instance_template" "instance_template" {
+  depends_on   = [google_kms_crypto_key_iam_binding.instance_binding]
   name_prefix  = "instance-template-vpc"
   machine_type = var.machine_type
   region       = var.region
@@ -210,6 +262,9 @@ resource "google_compute_region_instance_template" "instance_template" {
     boot         = true
     disk_size_gb = var.boot_disk_size
     disk_type    = var.boot_disk_type
+    disk_encryption_key {
+      kms_key_self_link = google_kms_crypto_key.instance_crypto_key.id
+    }
   }
 
   network_interface {
@@ -339,10 +394,35 @@ resource "google_dns_record_set" "a_record" {
   rrdatas      = [google_compute_global_address.webapp_global_ip.address]
 }
 
+resource "google_kms_crypto_key" "bucket_crypto_key" {
+  name            = var.bucket_key_ring_name
+  key_ring        = google_kms_key_ring.my_key_ring.id
+  rotation_period = "2592000s"
+
+
+  version_template {
+    algorithm = "GOOGLE_SYMMETRIC_ENCRYPTION"
+  }
+}
+
+data "google_storage_project_service_account" "gcs_account" {
+}
+
+resource "google_kms_crypto_key_iam_binding" "binding" {
+  crypto_key_id = google_kms_crypto_key.bucket_crypto_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = ["serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"]
+}
+
 resource "google_storage_bucket" "bucket" {
   name                        = var.bucket_name
-  location                    = var.bucket_location
+  location                    = var.region
   uniform_bucket_level_access = true
+  encryption {
+    default_kms_key_name = google_kms_crypto_key.bucket_crypto_key.id
+  }
+  depends_on = [google_kms_crypto_key_iam_binding.binding]
 }
 
 resource "google_storage_bucket_iam_binding" "public" {
@@ -353,6 +433,7 @@ resource "google_storage_bucket_iam_binding" "public" {
     "allUsers",
   ]
 }
+
 
 resource "google_storage_bucket_object" "object" {
   name   = var.bucket_object_name
